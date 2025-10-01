@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Home, Factory, Download, Calendar, Target, Lightbulb, FileText, TrendingUp } from 'lucide-react';
+import { Building2, Home, Factory, Download, Calendar, Target, Lightbulb, FileText, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('input');
@@ -13,9 +13,12 @@ const App = () => {
     targetAudience: [],
     usps: '',
     marketingGoals: [],
-    contentNeeds: []
+    contentNeeds: [],
+    apiKey: ''
   });
   const [generatedContent, setGeneratedContent] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState('');
 
   const projectTypes = [
     { id: 'residential', label: 'Residential', icon: Home },
@@ -29,6 +32,7 @@ const App = () => {
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setError('');
   };
 
   const toggleArrayField = (field, value) => {
@@ -40,265 +44,512 @@ const App = () => {
     }));
   };
 
-  const generateContent = () => {
-    const content = {
-      socialPosts: generateSocialPosts(),
-      adCopies: generateAdCopies(),
-      creativePrompts: generateCreativePrompts(),
-      campaignCalendar: generateCampaignCalendar(),
-      targetingSuggestions: generateTargetingSuggestions(),
-      leadMagnetCopy: generateLeadMagnetCopy()
-    };
-    setGeneratedContent(content);
-    setActiveTab('results');
-  };
-
-  const generateSocialPosts = () => {
-    const posts = [];
-    const projectTypeDescriptions = {
-      residential: ['luxury living', 'dream home', 'premium lifestyle', 'modern amenities'],
-      commercial: ['business hub', 'growth catalyst', 'strategic location', 'premium office space'],
-      industrial: ['logistics excellence', 'manufacturing advantage', 'connectivity', 'investment opportunity']
-    };
-
-    const descriptions = projectTypeDescriptions[formData.projectType];
-    
-    for (let i = 0; i < 10; i++) {
-      const platforms = ['Facebook & Instagram', 'LinkedIn', 'Twitter/X'];
-      const platform = platforms[i % 3];
-      
-      posts.push({
-        id: i + 1,
-        platform,
-        copy: `🏢 ${formData.projectName || 'Your Project'} - Where ${descriptions[i % descriptions.length]} meets excellence!\n\n${formData.city ? `📍 Located in prime ${formData.city}` : '📍 Prime location'} ${formData.landmark ? `near ${formData.landmark}` : ''}\n\n✨ ${formData.usps || 'Premium features and world-class amenities'}\n\n${formData.targetAudience.includes('NRIs') ? '🌍 Perfect for NRI investors seeking quality and returns\n' : ''}${formData.targetAudience.includes('HNIs') ? '💎 Designed for discerning high-net-worth individuals\n' : ''}\n📞 Enquire now for exclusive pre-launch offers!\n\n#RealEstate #${formData.projectType === 'residential' ? 'LuxuryHomes' : formData.projectType === 'commercial' ? 'CommercialRealEstate' : 'IndustrialPark'} #Investment #${formData.city || 'PrimeLocation'} #${formData.developer?.replace(/\s+/g, '') || 'Premium'}Developments`,
-        cta: 'Learn More | Book Site Visit | Download Brochure'
+  const callGroqAPI = async (prompt, systemPrompt) => {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${formData.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.8,
+          max_tokens: 2000,
+        }),
       });
-    }
-    return posts;
-  };
 
-  const generateAdCopies = () => {
-    return [
-      {
-        platform: 'Facebook Lead Ads',
-        headline: `${formData.projectName || 'Premium Project'} - ${formData.city || 'Prime Location'}`,
-        body: `Discover ${formData.projectType} excellence. ${formData.usps || 'World-class amenities, strategic location, and guaranteed returns'}. ${formData.targetAudience.includes('NRIs') ? 'NRI-friendly investments.' : ''} Limited units available.`,
-        cta: 'Get Exclusive Details'
-      },
-      {
-        platform: 'Google Search Ads',
-        headline: `${formData.projectType.charAt(0).toUpperCase() + formData.projectType.slice(1)} in ${formData.city || 'Prime Area'} | ${formData.developer || 'Premium Developer'}`,
-        body: `RERA Approved ${formData.projectType} project. ${formData.usps || 'Premium location, modern amenities'}. Site visits available. Enquire now!`,
-        cta: 'Book Site Visit'
-      },
-      {
-        platform: 'LinkedIn Sponsored Content',
-        headline: `Strategic ${formData.projectType.charAt(0).toUpperCase() + formData.projectType.slice(1)} Investment Opportunity`,
-        body: `${formData.projectName || 'Our latest project'} offers institutional-grade ${formData.projectType} assets. ${formData.targetAudience.includes('Corporates') ? 'Perfect for corporate expansion and asset diversification.' : 'Ideal for portfolio diversification.'} High ROI potential.`,
-        cta: 'Download Investment Brief'
-      },
-      {
-        platform: 'Instagram Story Ads',
-        headline: `Your ${formData.projectType === 'residential' ? 'Dream Home' : 'Investment'} Awaits`,
-        body: `Swipe up to explore ${formData.projectName || 'this premium project'}. ${formData.city ? `Located in ${formData.city}` : 'Prime location'}. Limited offer!`,
-        cta: 'Swipe Up'
-      },
-      {
-        platform: 'YouTube Pre-Roll',
-        headline: `${formData.projectName || 'Premium Project'} - Redefining ${formData.projectType.charAt(0).toUpperCase() + formData.projectType.slice(1)} Excellence`,
-        body: `Experience luxury and returns combined. Watch our virtual tour and discover why investors choose ${formData.developer || 'us'}. ${formData.usps || 'Premium amenities, strategic location, RERA approved'}.`,
-        cta: 'Watch Virtual Tour'
+      if (!response.ok) {
+        throw new Error('API call failed. Please check your API key.');
       }
-    ];
-  };
 
-  const generateCreativePrompts = () => {
-    const promptsByType = {
-      residential: [
-        'Photorealistic luxury apartment tower with infinity pool on rooftop, golden hour sunset, modern glass facade, people enjoying poolside, cityscape background, 4K quality',
-        'Elegant 4BHK apartment interior, marble flooring, floor-to-ceiling windows, modern furniture, natural lighting, plants, premium finishes, architectural photography',
-        'Aerial drone view of gated residential community, landscaped gardens, clubhouse, children playing in park, security gates, wide roads, evening lights',
-        'Modern residential lobby with chandelier, concierge desk, marble walls, luxury seating area, professional lighting, welcoming atmosphere',
-        'Family enjoying balcony view with coffee, sunrise, city skyline, happy moments, lifestyle photography'
-      ],
-      commercial: [
-        'Modern Grade-A office building with glass facade, business professionals walking, urban skyline, blue hour, corporate architecture, premium aesthetic',
-        'Spacious office interior with workstations, meeting rooms visible through glass, natural light, professional team working, modern furniture, tech-enabled workspace',
-        'Commercial complex entrance with landscaping, parking area, signage, people entering, professional atmosphere, daytime photography',
-        'Conference room with city view, executive meeting, large table, presentation screen, professional setting, high-end finishes',
-        'Office building at night with lit windows, creating pattern, urban context, architectural beauty, corporate excellence'
-      ],
-      industrial: [
-        'Large industrial park aerial view, warehouses in rows, wide roads, trucks moving, greenery, organized layout, logistics hub, professional photography',
-        'Modern warehouse interior with high ceilings, organized inventory, forklifts, workers, efficient operations, clean industrial space',
-        'Industrial park entrance with security gate, signage, landscaping, wide roads, professional appearance, daytime clear weather',
-        'Loading dock area with trucks, efficient operations, workers coordinating, safety measures visible, organized industrial facility',
-        'Bird\'s eye view of industrial township with manufacturing units, green belt, connectivity to highways, planned infrastructure'
-      ]
-    };
-
-    return promptsByType[formData.projectType].map((prompt, index) => ({
-      id: index + 1,
-      purpose: ['Hero Image', 'Interior Showcase', 'Aerial View', 'Amenity Highlight', 'Lifestyle Visual'][index],
-      prompt,
-      suggestedUse: ['Website banner, Facebook cover', 'Instagram post, brochure', 'LinkedIn article hero', 'Instagram stories, reels', 'Social media posts'][index]
-    }));
-  };
-
-  const generateCampaignCalendar = () => {
-    const themes = {
-      residential: [
-        { theme: 'Project Launch & Brand Introduction', content: 'Teaser posts, developer legacy, project vision' },
-        { theme: 'Location Advantage', content: 'Connectivity, nearby landmarks, lifestyle amenities' },
-        { theme: 'Luxury & Amenities', content: 'Clubhouse, pool, gym, landscaping features' },
-        { theme: 'Investment & ROI Focus', content: 'Appreciation potential, rental yields, market analysis' },
-        { theme: 'Limited Inventory Urgency', content: 'Units selling fast, early bird offers, booking process' }
-      ],
-      commercial: [
-        { theme: 'Strategic Business Location', content: 'Connectivity, business district, accessibility' },
-        { theme: 'Grade-A Specifications', content: 'Infrastructure, modern amenities, tech-ready spaces' },
-        { theme: 'Corporate Tenant Success Stories', content: 'Similar projects, occupancy rates, tenant testimonials' },
-        { theme: 'ROI & Capital Appreciation', content: 'Rental returns, market growth, investment benefits' },
-        { theme: 'Flexible Spaces & Booking', content: 'Custom configurations, booking process, site visits' }
-      ],
-      industrial: [
-        { theme: 'Connectivity & Logistics Hub', content: 'Highway access, ports, airports, transport advantages' },
-        { theme: 'Infrastructure Excellence', content: 'Power supply, water, drainage, road network' },
-        { theme: 'Government Support & Incentives', content: 'Tax benefits, subsidies, special zones' },
-        { theme: 'Investor Returns & Growth', content: 'Rental yields, appreciation, demand analysis' },
-        { theme: 'Ready to Move & Booking', content: 'Immediate possession, documentation, site tours' }
-      ]
-    };
-
-    const calendar = [];
-    const selectedThemes = themes[formData.projectType];
-    
-    for (let week = 1; week <= 4; week++) {
-      const themeIndex = (week - 1) % selectedThemes.length;
-      calendar.push({
-        week,
-        theme: selectedThemes[themeIndex].theme,
-        content: selectedThemes[themeIndex].content,
-        posts: [
-          { day: 'Monday', format: 'Carousel Post', platform: 'Instagram/Facebook' },
-          { day: 'Wednesday', format: 'Reel/Video', platform: 'Instagram/YouTube' },
-          { day: 'Friday', format: 'Article/Blog', platform: 'LinkedIn' },
-          { day: 'Sunday', format: 'Testimonial/Update', platform: 'All Platforms' }
-        ]
-      });
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } catch (err) {
+      throw new Error(err.message || 'Failed to generate content');
     }
-    
-    return calendar;
   };
 
-  const generateTargetingSuggestions = () => {
-    const suggestions = [];
+  const generateWithAI = async () => {
+    if (!formData.apiKey) {
+      setError('Please enter your Groq API key to use AI generation');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError('');
+
+    try {
+      // Generate all content types in parallel
+      const [socialPosts, adCopies, creativePrompts, campaignCalendar, targetingSuggestions, leadMagnetCopy] = await Promise.all([
+        generateAISocialPosts(),
+        generateAIAdCopies(),
+        generateAICreativePrompts(),
+        generateAICampaignCalendar(),
+        generateAITargeting(),
+        generateAILeadMagnet()
+      ]);
+
+      setGeneratedContent({
+        socialPosts,
+        adCopies,
+        creativePrompts,
+        campaignCalendar,
+        targetingSuggestions,
+        leadMagnetCopy
+      });
+
+      setActiveTab('results');
+    } catch (err) {
+      setError(err.message || 'Failed to generate content. Please check your API key and try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const generateAISocialPosts = async () => {
+    const systemPrompt = `You are an expert real estate marketing specialist with deep knowledge of Indian and global real estate markets. Create highly engaging, persuasive social media posts that convert viewers into leads.`;
+
+    const prompt = `Create 10 unique, creative social media posts for this real estate project:
+
+Project Details:
+- Type: ${formData.projectType}
+- Name: ${formData.projectName}
+- Developer: ${formData.developer || 'Premium Developer'}
+- Location: ${formData.city}, ${formData.country || 'India'}
+- Landmark: ${formData.landmark || 'Prime location'}
+- Target Audience: ${formData.targetAudience.join(', ')}
+- USPs: ${formData.usps || 'Premium amenities, strategic location'}
+- Marketing Goals: ${formData.marketingGoals.join(', ')}
+
+Requirements:
+1. Research ${formData.city} real estate market and mention actual connectivity, nearby areas
+2. Create varied posts for Facebook, Instagram, LinkedIn, Twitter
+3. Use emojis strategically
+4. Include strong CTAs
+5. Mix of emotional appeal, ROI focus, urgency, lifestyle
+6. Each post must be unique and creative
+7. Include relevant hashtags
+8. Make it compelling for ${formData.targetAudience.join(', ')}
+
+Format each post as:
+Platform: [platform name]
+Copy: [post content with emojis and formatting]
+CTA: [specific call to action]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAIPosts(result);
+  };
+
+  const generateAIAdCopies = async () => {
+    const systemPrompt = `You are a performance marketing expert specializing in real estate. Create high-converting ad copies that drive clicks and leads.`;
+
+    const prompt = `Create 5 different ad copies for various platforms for this project:
+
+Project: ${formData.projectName}
+Type: ${formData.projectType}
+Location: ${formData.city}, ${formData.country || 'India'}
+Target: ${formData.targetAudience.join(', ')}
+USPs: ${formData.usps}
+
+Platforms needed: Facebook Lead Ads, Google Search Ads, LinkedIn Sponsored Content, Instagram Story Ads, YouTube Pre-Roll
+
+For each ad provide:
+- Platform-specific headline (attention-grabbing)
+- Ad body (benefit-focused, creates urgency)
+- Strong CTA
+
+Format:
+Platform: [name]
+Headline: [headline]
+Body: [ad copy]
+CTA: [call to action]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAIAds(result);
+  };
+
+  const generateAICreativePrompts = async () => {
+    const systemPrompt = `You are an expert in AI image generation prompts for real estate marketing. Create detailed, photorealistic prompts.`;
+
+    const prompt = `Create 5 detailed AI image generation prompts for ${formData.projectType} project "${formData.projectName}" in ${formData.city}.
+
+Each prompt should:
+1. Be highly detailed and photorealistic
+2. Include lighting, composition, atmosphere
+3. Mention specific architectural styles relevant to ${formData.city}
+4. Include human elements and lifestyle aspects
+5. Be optimized for Midjourney/DALL-E/Stable Diffusion
+
+Prompt types needed:
+1. Hero/Banner Image
+2. Interior/Amenity Showcase
+3. Aerial/Location View
+4. Lifestyle/People Image
+5. Night/Evening Shot
+
+Format:
+Purpose: [purpose]
+Prompt: [detailed prompt]
+Suggested Use: [where to use this image]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAIPrompts(result);
+  };
+
+  const generateAICampaignCalendar = async () => {
+    const systemPrompt = `You are a social media strategist creating comprehensive campaign calendars for real estate projects.`;
+
+    const prompt = `Create a 30-day (4-week) social media campaign calendar for:
+
+Project: ${formData.projectName}
+Type: ${formData.projectType}
+Goals: ${formData.marketingGoals.join(', ')}
+Audience: ${formData.targetAudience.join(', ')}
+
+For each week provide:
+- Weekly theme (strategic and creative)
+- Content focus (what to emphasize)
+- 4 post ideas with days and formats
+- Platform mix (Instagram, Facebook, LinkedIn, YouTube)
+
+Format:
+Week [number]: [Theme Name]
+Content Focus: [description]
+Posts:
+- Monday: [format] on [platform]
+- Wednesday: [format] on [platform]
+- Friday: [format] on [platform]
+- Sunday: [format] on [platform]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAICalendar(result);
+  };
+
+  const generateAITargeting = async () => {
+    const systemPrompt = `You are a digital advertising expert specializing in audience targeting for real estate.`;
+
+    const prompt = `Create detailed targeting strategies for each audience segment:
+
+Target Audiences: ${formData.targetAudience.join(', ')}
+Project Type: ${formData.projectType}
+Location: ${formData.city}
+
+For each audience provide:
+- Demographics (age, income, occupation)
+- Interests & Behaviors
+- Best platforms
+- Ad formats that work
+- Geographic targeting (specific areas/countries)
+- Messaging angle
+
+Format:
+Audience: [name]
+Demographics: [details]
+Interests: [list]
+Platforms: [list]
+Ad Formats: [list]
+Geos: [specific locations]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAITargeting(result);
+  };
+
+  const generateAILeadMagnet = async () => {
+    const systemPrompt = `You are a conversion copywriter expert in real estate lead generation.`;
+
+    const prompt = `Create 4 compelling lead magnet landing page copies:
+
+1. ROI Calculator
+2. Brochure Download
+3. Virtual Tour Signup
+4. Enquiry Form
+
+Project: ${formData.projectName}
+Type: ${formData.projectType}
+Target: ${formData.targetAudience.join(', ')}
+USPs: ${formData.usps}
+
+For each lead magnet:
+- Compelling headline
+- Benefit-rich subheading
+- Persuasive body copy (2-3 paragraphs)
+- Strong CTA button text
+- Form fields needed
+
+Format:
+Type: [lead magnet type]
+Headline: [headline]
+Subheading: [subheading]
+Body: [body copy]
+CTA: [button text]
+Fields: [field1, field2, field3]
+---`;
+
+    const result = await callGroqAPI(prompt, systemPrompt);
+    return parseAILeadMagnet(result);
+  };
+
+  // Parsing functions
+  const parseAIPosts = (text) => {
+    const posts = [];
+    const sections = text.split('---').filter(s => s.trim());
     
-    formData.targetAudience.forEach(audience => {
-      switch(audience) {
-        case 'HNIs':
-          suggestions.push({
-            audience: 'High Net Worth Individuals (HNIs)',
-            demographics: 'Age 35-60, Income $200K+',
-            interests: 'Luxury lifestyle, investments, real estate, private equity, wealth management',
-            platforms: 'LinkedIn, Instagram, Facebook',
-            adFormats: 'Carousel ads, video ads, lead forms',
-            geos: `${formData.city || 'Major metros'}, Tier-1 cities`
-          });
-          break;
-        case 'UHNIs':
-          suggestions.push({
-            audience: 'Ultra High Net Worth Individuals (UHNIs)',
-            demographics: 'Age 40-65, Net Worth $5M+',
-            interests: 'Luxury real estate, portfolio diversification, exclusive investments, art & collectibles',
-            platforms: 'LinkedIn, Instagram (premium placements)',
-            adFormats: 'Video testimonials, exclusive webinar invites, personalized outreach',
-            geos: 'Mumbai, Delhi, Bangalore, international metros'
-          });
-          break;
-        case 'NRIs':
-          suggestions.push({
-            audience: 'Non-Resident Indians (NRIs)',
-            demographics: 'Age 30-55, Indian diaspora',
-            interests: 'India real estate, investment opportunities, NRI banking, homeland connections',
-            platforms: 'Facebook, LinkedIn, WhatsApp Business',
-            adFormats: 'Video tours, ROI calculators, NRI-specific content',
-            geos: 'UAE (Dubai), Singapore, USA (Bay Area, New York), UK (London), Canada (Toronto), Australia'
-          });
-          break;
-        case 'Corporates':
-          suggestions.push({
-            audience: 'Corporate Decision Makers',
-            demographics: 'CXOs, CFOs, Real Estate Heads, Age 35-55',
-            interests: 'Commercial real estate, corporate expansion, asset management, business growth',
-            platforms: 'LinkedIn (primary), industry publications',
-            adFormats: 'Sponsored content, investment briefs, case studies',
-            geos: `${formData.city || 'Business hubs'}, IT corridors, industrial zones`
-          });
-          break;
-        case 'Retail Investors':
-          suggestions.push({
-            audience: 'Retail Investors',
-            demographics: 'Age 25-45, Income $50K-150K',
-            interests: 'Real estate investment, wealth building, financial planning, property ownership',
-            platforms: 'Facebook, Instagram, Google Search',
-            adFormats: 'Lead ads, search ads, carousel posts',
-            geos: `${formData.city || 'Local markets'}, nearby cities`
-          });
-          break;
-        case 'Institutional Investors':
-          suggestions.push({
-            audience: 'Institutional Investors',
-            demographics: 'Investment firms, REITs, PE funds',
-            interests: 'Commercial real estate, large-scale projects, portfolio assets, development opportunities',
-            platforms: 'LinkedIn, direct outreach, industry events',
-            adFormats: 'Detailed investment briefs, data sheets, exclusive presentations',
-            geos: 'National & international financial centers'
-          });
-          break;
+    sections.forEach((section, index) => {
+      const platformMatch = section.match(/Platform:\s*(.+)/i);
+      const copyMatch = section.match(/Copy:\s*([\s\S]+?)(?=CTA:|$)/i);
+      const ctaMatch = section.match(/CTA:\s*(.+)/i);
+      
+      if (copyMatch) {
+        posts.push({
+          id: index + 1,
+          platform: platformMatch ? platformMatch[1].trim() : 'Social Media',
+          copy: copyMatch[1].trim(),
+          cta: ctaMatch ? ctaMatch[1].trim() : 'Learn More'
+        });
       }
     });
     
-    return suggestions.length > 0 ? suggestions : [{
-      audience: 'General Audience',
-      demographics: 'Age 25-60, Middle to high income',
-      interests: 'Real estate, property investment, home ownership',
-      platforms: 'Facebook, Instagram, Google Search',
-      adFormats: 'All formats',
-      geos: formData.city || 'Target location'
+    return posts.length > 0 ? posts : generateFallbackPosts();
+  };
+
+  const parseAIAds = (text) => {
+    const ads = [];
+    const sections = text.split('---').filter(s => s.trim());
+    
+    sections.forEach(section => {
+      const platformMatch = section.match(/Platform:\s*(.+)/i);
+      const headlineMatch = section.match(/Headline:\s*(.+)/i);
+      const bodyMatch = section.match(/Body:\s*([\s\S]+?)(?=CTA:|$)/i);
+      const ctaMatch = section.match(/CTA:\s*(.+)/i);
+      
+      if (headlineMatch && bodyMatch) {
+        ads.push({
+          platform: platformMatch ? platformMatch[1].trim() : 'Digital Platform',
+          headline: headlineMatch[1].trim(),
+          body: bodyMatch[1].trim(),
+          cta: ctaMatch ? ctaMatch[1].trim() : 'Learn More'
+        });
+      }
+    });
+    
+    return ads.length > 0 ? ads : generateFallbackAds();
+  };
+
+  const parseAIPrompts = (text) => {
+    const prompts = [];
+    const sections = text.split('---').filter(s => s.trim());
+    
+    sections.forEach((section, index) => {
+      const purposeMatch = section.match(/Purpose:\s*(.+)/i);
+      const promptMatch = section.match(/Prompt:\s*([\s\S]+?)(?=Suggested Use:|$)/i);
+      const useMatch = section.match(/Suggested Use:\s*(.+)/i);
+      
+      if (promptMatch) {
+        prompts.push({
+          id: index + 1,
+          purpose: purposeMatch ? purposeMatch[1].trim() : `Visual ${index + 1}`,
+          prompt: promptMatch[1].trim(),
+          suggestedUse: useMatch ? useMatch[1].trim() : 'Marketing materials'
+        });
+      }
+    });
+    
+    return prompts.length > 0 ? prompts : generateFallbackPrompts();
+  };
+
+  const parseAICalendar = (text) => {
+    const calendar = [];
+    const weeks = text.split(/Week\s+\d+:/i).filter(s => s.trim());
+    
+    weeks.forEach((week, index) => {
+      const themeMatch = week.match(/^([^\n]+)/);
+      const contentMatch = week.match(/Content Focus:\s*(.+)/i);
+      const postsSection = week.match(/Posts:([\s\S]+?)(?=Week|$)/i);
+      
+      const posts = [];
+      if (postsSection) {
+        const postLines = postsSection[1].split('\n').filter(l => l.trim() && l.includes(':'));
+        postLines.forEach(line => {
+          const dayMatch = line.match(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday):\s*(.+?)\s+on\s+(.+)/i);
+          if (dayMatch) {
+            posts.push({
+              day: dayMatch[1],
+              format: dayMatch[2].trim(),
+              platform: dayMatch[3].trim()
+            });
+          }
+        });
+      }
+      
+      if (themeMatch) {
+        calendar.push({
+          week: index + 1,
+          theme: themeMatch[1].trim(),
+          content: contentMatch ? contentMatch[1].trim() : 'Strategic content planning',
+          posts: posts.length > 0 ? posts : generateFallbackWeekPosts()
+        });
+      }
+    });
+    
+    return calendar.length > 0 ? calendar : generateFallbackCalendar();
+  };
+
+  const parseAITargeting = (text) => {
+    const targeting = [];
+    const sections = text.split(/Audience:|---/).filter(s => s.trim() && !s.startsWith('Audience:'));
+    
+    sections.forEach(section => {
+      const audienceMatch = section.match(/^([^\n]+)/);
+      const demoMatch = section.match(/Demographics:\s*(.+)/i);
+      const interestsMatch = section.match(/Interests:\s*(.+)/i);
+      const platformsMatch = section.match(/Platforms:\s*(.+)/i);
+      const formatsMatch = section.match(/(?:Ad\s+)?Formats:\s*(.+)/i);
+      const geosMatch = section.match(/Geos?:\s*(.+)/i);
+      
+      if (audienceMatch) {
+        targeting.push({
+          audience: audienceMatch[1].trim(),
+          demographics: demoMatch ? demoMatch[1].trim() : 'Varied demographics',
+          interests: interestsMatch ? interestsMatch[1].trim() : 'Real estate, investments',
+          platforms: platformsMatch ? platformsMatch[1].trim() : 'Facebook, Instagram, LinkedIn',
+          adFormats: formatsMatch ? formatsMatch[1].trim() : 'All formats',
+          geos: geosMatch ? geosMatch[1].trim() : formData.city || 'Target locations'
+        });
+      }
+    });
+    
+    return targeting.length > 0 ? targeting : generateFallbackTargeting();
+  };
+
+  const parseAILeadMagnet = (text) => {
+    const leadMagnets = {};
+    const types = ['ROI Calculator', 'Brochure', 'Virtual Tour', 'Enquiry'];
+    const sections = text.split(/Type:|---/).filter(s => s.trim());
+    
+    sections.forEach((section, index) => {
+      const headlineMatch = section.match(/Headline:\s*(.+)/i);
+      const subheadingMatch = section.match(/Subheading:\s*(.+)/i);
+      const bodyMatch = section.match(/Body:\s*([\s\S]+?)(?=CTA:|Fields:|$)/i);
+      const ctaMatch = section.match(/CTA:\s*(.+)/i);
+      const fieldsMatch = section.match(/Fields:\s*(.+)/i);
+      
+      if (headlineMatch && index < types.length) {
+        const key = types[index].toLowerCase().replace(/\s+/g, '');
+        leadMagnets[key] = {
+          headline: headlineMatch[1].trim(),
+          subheading: subheadingMatch ? subheadingMatch[1].trim() : 'Get exclusive access',
+          body: bodyMatch ? bodyMatch[1].trim() : 'Discover the potential of this premium project.',
+          cta: ctaMatch ? ctaMatch[1].trim() : 'Get Started',
+          formFields: fieldsMatch ? fieldsMatch[1].split(',').map(f => f.trim()) : ['Name', 'Email', 'Phone']
+        };
+      }
+    });
+    
+    return Object.keys(leadMagnets).length > 0 ? leadMagnets : generateFallbackLeadMagnet();
+  };
+
+  // Fallback functions
+  const generateFallbackPosts = () => {
+    return [{
+      id: 1,
+      platform: 'Social Media',
+      copy: `🏢 ${formData.projectName || 'Premium Project'} - Your gateway to ${formData.projectType} excellence in ${formData.city}!\n\n✨ ${formData.usps || 'World-class amenities and strategic location'}\n\n📞 Enquire now!`,
+      cta: 'Learn More'
     }];
   };
 
-  const generateLeadMagnetCopy = () => {
+  const generateFallbackAds = () => {
+    return [{
+      platform: 'Digital Ads',
+      headline: `${formData.projectName} - ${formData.city}`,
+      body: `Premium ${formData.projectType} project. ${formData.usps || 'Excellent location and amenities'}`,
+      cta: 'Enquire Now'
+    }];
+  };
+
+  const generateFallbackPrompts = () => {
+    return [{
+      id: 1,
+      purpose: 'Hero Image',
+      prompt: `Photorealistic ${formData.projectType} project, modern architecture, ${formData.city} skyline, golden hour, professional photography`,
+      suggestedUse: 'Website banner, social media'
+    }];
+  };
+
+  const generateFallbackCalendar = () => {
+    return [{
+      week: 1,
+      theme: 'Project Launch',
+      content: 'Introduce the project and key features',
+      posts: generateFallbackWeekPosts()
+    }];
+  };
+
+  const generateFallbackWeekPosts = () => {
+    return [
+      { day: 'Monday', format: 'Image Post', platform: 'Instagram/Facebook' },
+      { day: 'Wednesday', format: 'Video', platform: 'Instagram' },
+      { day: 'Friday', format: 'Article', platform: 'LinkedIn' },
+      { day: 'Sunday', format: 'Carousel', platform: 'All Platforms' }
+    ];
+  };
+
+  const generateFallbackTargeting = () => {
+    return formData.targetAudience.map(aud => ({
+      audience: aud,
+      demographics: 'Age 25-60, Middle to high income',
+      interests: 'Real estate, investments, property',
+      platforms: 'Facebook, Instagram, LinkedIn',
+      adFormats: 'All formats',
+      geos: formData.city || 'Target location'
+    }));
+  };
+
+  const generateFallbackLeadMagnet = () => {
     return {
-      roiCalculator: {
-        headline: `Calculate Your Returns: ${formData.projectName || 'Investment'} ROI Calculator`,
-        subheading: `Discover the potential appreciation and rental returns from ${formData.projectName || 'this premium project'}`,
-        body: `Enter your investment amount and see projected returns over 5-10 years. Our calculator factors in location appreciation, rental yields, and market trends in ${formData.city || 'the area'}. Get personalized insights instantly.`,
-        cta: 'Calculate My Returns',
-        formFields: ['Name', 'Email', 'Phone', 'Investment Budget', 'Investment Timeline']
+      roicalculator: {
+        headline: `Calculate Your ${formData.projectName} Returns`,
+        subheading: 'See your investment potential',
+        body: 'Enter your details to calculate projected returns.',
+        cta: 'Calculate Now',
+        formFields: ['Name', 'Email', 'Phone', 'Investment Amount']
       },
       brochure: {
-        headline: `Download ${formData.projectName || 'Project'} Brochure - Complete Details Inside`,
-        subheading: 'Your comprehensive guide to specifications, pricing, and payment plans',
-        body: `Get the official brochure featuring:\n• Detailed floor plans and specifications\n• Pricing and payment schemes\n• Amenities and features\n• Location advantages and connectivity\n• Developer credentials and past projects\n${formData.usps ? `• ${formData.usps}` : ''}`,
-        cta: 'Download Brochure (PDF)',
-        formFields: ['Full Name', 'Email', 'Phone', 'Preferred Unit Type']
+        headline: `Download ${formData.projectName} Brochure`,
+        subheading: 'Complete project details',
+        body: 'Get the official brochure with all specifications.',
+        cta: 'Download Brochure',
+        formFields: ['Name', 'Email', 'Phone']
       },
-      virtualTour: {
-        headline: `Experience ${formData.projectName || 'The Project'} from Anywhere - Virtual Tour`,
-        subheading: `${formData.targetAudience.includes('NRIs') ? 'Perfect for NRIs and remote investors!' : 'Explore without visiting in person'}`,
-        body: `Join our exclusive virtual walkthrough and see:\n• ${formData.projectType === 'residential' ? 'Sample apartments and common areas' : formData.projectType === 'commercial' ? 'Office spaces and facilities' : 'Industrial park layout and infrastructure'}\n• Live Q&A with our sales team\n• Special offers for virtual tour attendees\n• 360° view of location and surroundings`,
-        cta: 'Book Virtual Tour',
-        formFields: ['Name', 'Email', 'Phone', 'Country/City', 'Preferred Date & Time']
+      virtualtour: {
+        headline: `Virtual Tour of ${formData.projectName}`,
+        subheading: 'Experience from anywhere',
+        body: 'Book your exclusive virtual walkthrough.',
+        cta: 'Book Tour',
+        formFields: ['Name', 'Email', 'Phone', 'Preferred Date']
       },
       enquiry: {
-        headline: `Get Exclusive Pre-Launch Offers - Enquire Now`,
-        subheading: 'Limited period offers for early investors',
-        body: `Connect with our team to:\n• Get the best prices and units\n• Schedule site visit\n• Understand payment plans and financing\n• Discuss customization options\n• Receive investment guidance\n\n💬 Instant connect via WhatsApp or call`,
+        headline: `Enquire About ${formData.projectName}`,
+        subheading: 'Get exclusive offers',
+        body: 'Connect with our team for special pre-launch deals.',
         cta: 'Enquire Now',
-        whatsappCta: 'Chat on WhatsApp',
-        formFields: ['Name', 'Email', 'Phone', 'Inquiry Type', 'Budget Range', 'Message']
+        formFields: ['Name', 'Email', 'Phone', 'Message']
       }
     };
   };
@@ -307,7 +558,8 @@ const App = () => {
     let content = '';
     
     if (format === 'txt') {
-      content = `Real Estate Marketing Content - ${formData.projectName || 'Project'}\n\n`;
+      content = `Real Estate Marketing Content - ${formData.projectName || 'Project'}\n`;
+      content += `Generated with AI on ${new Date().toLocaleDateString()}\n\n`;
       content += `=== SOCIAL MEDIA POSTS ===\n\n`;
       generatedContent.socialPosts.forEach(post => {
         content += `POST #${post.id} (${post.platform})\n${post.copy}\nCTA: ${post.cta}\n\n---\n\n`;
@@ -322,13 +574,22 @@ const App = () => {
       generatedContent.creativePrompts.forEach(prompt => {
         content += `${prompt.purpose}\nPrompt: ${prompt.prompt}\nUse: ${prompt.suggestedUse}\n\n---\n\n`;
       });
+      
+      content += `\n=== CAMPAIGN CALENDAR ===\n\n`;
+      generatedContent.campaignCalendar.forEach(week => {
+        content += `Week ${week.week}: ${week.theme}\n${week.content}\n`;
+        week.posts.forEach(post => {
+          content += `${post.day}: ${post.format} (${post.platform})\n`;
+        });
+        content += `\n---\n\n`;
+      });
     }
     
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${formData.projectName || 'project'}-marketing-content.txt`;
+    a.download = `${formData.projectName || 'project'}-ai-marketing-content.txt`;
     a.click();
   };
 
@@ -341,8 +602,11 @@ const App = () => {
             <div className="flex items-center gap-3">
               <Building2 className="w-8 h-8 text-blue-400" />
               <div>
-                <h1 className="text-xl font-bold">Real Estate Marketing Automation</h1>
-                <p className="text-xs text-slate-400">AI-Powered Branding & Social Media Tool</p>
+                <h1 className="text-xl font-bold flex items-center gap-2">
+                  Real Estate Marketing Automation
+                  <Sparkles className="w-5 h-5 text-yellow-400" />
+                </h1>
+                <p className="text-xs text-slate-400">AI-Powered Creative Content Generation</p>
               </div>
             </div>
             {generatedContent && (
@@ -393,6 +657,49 @@ const App = () => {
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'input' && (
           <div className="max-w-4xl mx-auto">
+            {/* API Key Section */}
+            <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 backdrop-blur-sm rounded-xl border border-blue-700/50 p-6 mb-6">
+              <div className="flex items-start gap-3">
+                <Sparkles className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold mb-2">AI-Powered Generation</h3>
+                  <p className="text-sm text-slate-300 mb-4">
+                    Enter your Groq API key to unlock creative, unique, and researched content generation.
+                    Your API key is stored only in your browser and never sent to our servers.
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="password"
+                      value={formData.apiKey}
+                      onChange={(e) => handleInputChange('apiKey', e.target.value)}
+                      placeholder="Enter your Groq API key (gsk_...)"
+                      className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                    />
+                    <a
+                      href="https://console.groq.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                    >
+                      Get API Key
+                    </a>
+                  </div>
+                  {!formData.apiKey && (
+                    <p className="text-xs text-yellow-400 mt-2">
+                      ⚠️ Without an API key, the tool will use basic templates
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 mb-6 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-200">{error}</p>
+              </div>
+            )}
+
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-8">
               <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
                 <FileText className="w-6 h-6 text-blue-400" />
@@ -555,13 +862,28 @@ const App = () => {
 
               {/* Generate Button */}
               <button
-                onClick={generateContent}
-                disabled={!formData.projectName || !formData.city || formData.targetAudience.length === 0}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2"
+                onClick={generateWithAI}
+                disabled={!formData.projectName || !formData.city || formData.targetAudience.length === 0 || isGenerating}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2"
               >
-                <TrendingUp className="w-5 h-5" />
-                Generate Marketing Content
+                {isGenerating ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Generating Creative Content...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Generate AI-Powered Content
+                  </>
+                )}
               </button>
+              
+              {isGenerating && (
+                <p className="text-center text-sm text-slate-400 mt-3">
+                  AI is researching {formData.city} market and creating unique content... This may take 30-60 seconds.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -575,7 +897,7 @@ const App = () => {
                 Social Media Posts ({generatedContent.socialPosts.length})
               </h3>
               <div className="grid gap-4">
-                {generatedContent.socialPosts.slice(0, 5).map(post => (
+                {generatedContent.socialPosts.map(post => (
                   <div key={post.id} className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-xs font-semibold text-blue-400 uppercase">{post.platform}</span>
@@ -585,11 +907,6 @@ const App = () => {
                     <div className="text-xs text-green-400 font-medium">CTA: {post.cta}</div>
                   </div>
                 ))}
-                {generatedContent.socialPosts.length > 5 && (
-                  <div className="text-center text-slate-400 text-sm">
-                    + {generatedContent.socialPosts.length - 5} more posts available in export
-                  </div>
-                )}
               </div>
             </div>
 
@@ -727,8 +1044,8 @@ const App = () => {
       {/* Footer */}
       <footer className="bg-slate-800/50 border-t border-slate-700 mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-slate-400 text-sm">
-          <p>Real Estate Marketing Automation Tool • Built for HNI, UHNI, NRI & Corporate Investors</p>
-          <p className="mt-1 text-xs">Export your content and integrate with your marketing platforms</p>
+          <p>Real Estate Marketing Automation Tool • AI-Powered Creative Content Generation</p>
+          <p className="mt-1 text-xs">Built for HNI, UHNI, NRI & Corporate Investors</p>
         </div>
       </footer>
     </div>
