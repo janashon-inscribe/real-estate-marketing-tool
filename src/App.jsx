@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Home, Factory, Download, Calendar, Target, Lightbulb, FileText, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
+import { Building2, Home, Factory, Download, Calendar, Target, Lightbulb, FileText, TrendingUp, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('input');
@@ -19,6 +19,7 @@ const App = () => {
   const [generatedContent, setGeneratedContent] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [apiKeyValid, setApiKeyValid] = useState(null);
 
   const projectTypes = [
     { id: 'residential', label: 'Residential', icon: Home },
@@ -33,6 +34,9 @@ const App = () => {
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
+    if (field === 'apiKey') {
+      setApiKeyValid(null);
+    }
   };
 
   const toggleArrayField = (field, value) => {
@@ -44,45 +48,95 @@ const App = () => {
     }));
   };
 
-  const callGroqAPI = async (prompt, systemPrompt) => {
+  const testApiKey = async () => {
+    if (!formData.apiKey.trim()) {
+      setError('Please enter an API key');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError('');
+    setApiKeyValid(null);
+
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${formData.apiKey}`,
+          'Authorization': `Bearer ${formData.apiKey.trim()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.1-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.8,
-          max_tokens: 2000,
+          inputs: 'Hello',
+          parameters: {
+            max_new_tokens: 10,
+            temperature: 0.7
+          }
+        }),
+      });
+
+      if (response.ok) {
+        setApiKeyValid(true);
+        setError('');
+      } else {
+        const errorData = await response.json();
+        setApiKeyValid(false);
+        if (response.status === 401) {
+          setError('Invalid API key. Please check your key at huggingface.co/settings/tokens');
+        } else if (response.status === 429) {
+          setError('Rate limit exceeded. Please wait a moment and try again.');
+        } else {
+          setError(`API Error: ${errorData.error || 'Unknown error'}`);
+        }
+      }
+    } catch (err) {
+      setApiKeyValid(false);
+      setError(`Connection error: ${err.message}. Please check your internet connection.`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const callHuggingFaceAPI = async (prompt, systemPrompt) => {
+    const fullPrompt = `${systemPrompt}\n\nUser: ${prompt}\n\nAssistant:`;
+    
+    try {
+      const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${formData.apiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs: fullPrompt,
+          parameters: {
+            max_new_tokens: 2000,
+            temperature: 0.8,
+            top_p: 0.9,
+            return_full_text: false
+          }
         }),
       });
 
       if (!response.ok) {
-        throw new Error('API call failed. Please check your API key.');
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API Error (${response.status})`);
       }
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      return data[0]?.generated_text || '';
     } catch (err) {
-      throw new Error(err.message || 'Failed to generate content');
+      throw err;
     }
   };
 
   const generateWithAI = async () => {
-    if (!formData.apiKey) {
-      setError('Please enter your Groq API key to use AI generation');
+    if (!formData.apiKey.trim()) {
+      setError('Please enter your Hugging Face API key first and test it using the "Test API Key" button');
+      return;
+    }
+
+    if (apiKeyValid === false) {
+      setError('Please test your API key first using the "Test API Key" button');
       return;
     }
 
@@ -90,15 +144,22 @@ const App = () => {
     setError('');
 
     try {
-      // Generate all content types in parallel
-      const [socialPosts, adCopies, creativePrompts, campaignCalendar, targetingSuggestions, leadMagnetCopy] = await Promise.all([
-        generateAISocialPosts(),
-        generateAIAdCopies(),
-        generateAICreativePrompts(),
-        generateAICampaignCalendar(),
-        generateAITargeting(),
-        generateAILeadMagnet()
-      ]);
+      const socialPosts = await generateAISocialPosts();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const adCopies = await generateAIAdCopies();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const creativePrompts = await generateAICreativePrompts();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const campaignCalendar = await generateAICampaignCalendar();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const targetingSuggestions = await generateAITargeting();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const leadMagnetCopy = await generateAILeadMagnet();
 
       setGeneratedContent({
         socialPosts,
@@ -111,123 +172,100 @@ const App = () => {
 
       setActiveTab('results');
     } catch (err) {
-      setError(err.message || 'Failed to generate content. Please check your API key and try again.');
+      console.error('Generation error:', err);
+      setError(`Failed to generate content: ${err.message}. Please try again.`);
     } finally {
       setIsGenerating(false);
     }
   };
 
   const generateAISocialPosts = async () => {
-    const systemPrompt = `You are an expert real estate marketing specialist with deep knowledge of Indian and global real estate markets. Create highly engaging, persuasive social media posts that convert viewers into leads.`;
+    const systemPrompt = `You are an expert real estate marketing specialist. Create highly engaging, persuasive social media posts that convert viewers into leads. Use emojis strategically and include strong CTAs.`;
 
-    const prompt = `Create 10 unique, creative social media posts for this real estate project:
-
-Project Details:
-- Type: ${formData.projectType}
-- Name: ${formData.projectName}
-- Developer: ${formData.developer || 'Premium Developer'}
-- Location: ${formData.city}, ${formData.country || 'India'}
-- Landmark: ${formData.landmark || 'Prime location'}
-- Target Audience: ${formData.targetAudience.join(', ')}
-- USPs: ${formData.usps || 'Premium amenities, strategic location'}
-- Marketing Goals: ${formData.marketingGoals.join(', ')}
-
-Requirements:
-1. Research ${formData.city} real estate market and mention actual connectivity, nearby areas
-2. Create varied posts for Facebook, Instagram, LinkedIn, Twitter
-3. Use emojis strategically
-4. Include strong CTAs
-5. Mix of emotional appeal, ROI focus, urgency, lifestyle
-6. Each post must be unique and creative
-7. Include relevant hashtags
-8. Make it compelling for ${formData.targetAudience.join(', ')}
-
-Format each post as:
-Platform: [platform name]
-Copy: [post content with emojis and formatting]
-CTA: [specific call to action]
----`;
-
-    const result = await callGroqAPI(prompt, systemPrompt);
-    return parseAIPosts(result);
-  };
-
-  const generateAIAdCopies = async () => {
-    const systemPrompt = `You are a performance marketing expert specializing in real estate. Create high-converting ad copies that drive clicks and leads.`;
-
-    const prompt = `Create 5 different ad copies for various platforms for this project:
+    const prompt = `Create 10 unique social media posts for:
 
 Project: ${formData.projectName}
 Type: ${formData.projectType}
 Location: ${formData.city}, ${formData.country || 'India'}
+Landmark: ${formData.landmark || 'Prime location'}
 Target: ${formData.targetAudience.join(', ')}
-USPs: ${formData.usps}
+USPs: ${formData.usps || 'Premium amenities'}
+Goals: ${formData.marketingGoals.join(', ')}
 
-Platforms needed: Facebook Lead Ads, Google Search Ads, LinkedIn Sponsored Content, Instagram Story Ads, YouTube Pre-Roll
+Create posts for: Facebook, Instagram, LinkedIn, Twitter
+Each post must be unique, creative, and include relevant hashtags.
 
-For each ad provide:
-- Platform-specific headline (attention-grabbing)
-- Ad body (benefit-focused, creates urgency)
-- Strong CTA
-
-Format:
+Format each as:
 Platform: [name]
-Headline: [headline]
-Body: [ad copy]
+Copy: [full post with emojis]
 CTA: [call to action]
 ---`;
 
-    const result = await callGroqAPI(prompt, systemPrompt);
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
+    return parseAIPosts(result);
+  };
+
+  const generateAIAdCopies = async () => {
+    const systemPrompt = `You are a performance marketing expert. Create high-converting ad copies for real estate.`;
+
+    const prompt = `Create 5 ad copies for:
+
+Project: ${formData.projectName}
+Location: ${formData.city}
+Type: ${formData.projectType}
+Target: ${formData.targetAudience.join(', ')}
+USPs: ${formData.usps}
+
+Platforms: Facebook Lead Ads, Google Search, LinkedIn, Instagram Stories, YouTube
+
+Format:
+Platform: [name]
+Headline: [compelling headline]
+Body: [benefit-focused copy]
+CTA: [action]
+---`;
+
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
     return parseAIAds(result);
   };
 
   const generateAICreativePrompts = async () => {
-    const systemPrompt = `You are an expert in AI image generation prompts for real estate marketing. Create detailed, photorealistic prompts.`;
+    const systemPrompt = `You are an AI image generation expert. Create detailed, photorealistic prompts for real estate marketing.`;
 
-    const prompt = `Create 5 detailed AI image generation prompts for ${formData.projectType} project "${formData.projectName}" in ${formData.city}.
+    const prompt = `Create 5 AI image prompts for ${formData.projectType} project in ${formData.city}:
 
-Each prompt should:
-1. Be highly detailed and photorealistic
-2. Include lighting, composition, atmosphere
-3. Mention specific architectural styles relevant to ${formData.city}
-4. Include human elements and lifestyle aspects
-5. Be optimized for Midjourney/DALL-E/Stable Diffusion
+1. Hero/Banner image
+2. Interior showcase
+3. Aerial view
+4. Lifestyle scene
+5. Night shot
 
-Prompt types needed:
-1. Hero/Banner Image
-2. Interior/Amenity Showcase
-3. Aerial/Location View
-4. Lifestyle/People Image
-5. Night/Evening Shot
+Each prompt should be detailed, photorealistic, and optimized for Midjourney/DALL-E.
 
 Format:
 Purpose: [purpose]
 Prompt: [detailed prompt]
-Suggested Use: [where to use this image]
+Suggested Use: [usage]
 ---`;
 
-    const result = await callGroqAPI(prompt, systemPrompt);
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
     return parseAIPrompts(result);
   };
 
   const generateAICampaignCalendar = async () => {
-    const systemPrompt = `You are a social media strategist creating comprehensive campaign calendars for real estate projects.`;
+    const systemPrompt = `You are a social media strategist. Create comprehensive campaign calendars.`;
 
-    const prompt = `Create a 30-day (4-week) social media campaign calendar for:
+    const prompt = `Create a 4-week campaign calendar for:
 
 Project: ${formData.projectName}
 Type: ${formData.projectType}
 Goals: ${formData.marketingGoals.join(', ')}
 Audience: ${formData.targetAudience.join(', ')}
 
-For each week provide:
-- Weekly theme (strategic and creative)
-- Content focus (what to emphasize)
-- 4 post ideas with days and formats
-- Platform mix (Instagram, Facebook, LinkedIn, YouTube)
+For each week: theme, content focus, 4 post ideas with days and platforms.
 
 Format:
-Week [number]: [Theme Name]
+Week [number]: [Theme]
 Content Focus: [description]
 Posts:
 - Monday: [format] on [platform]
@@ -236,26 +274,18 @@ Posts:
 - Sunday: [format] on [platform]
 ---`;
 
-    const result = await callGroqAPI(prompt, systemPrompt);
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
     return parseAICalendar(result);
   };
 
   const generateAITargeting = async () => {
-    const systemPrompt = `You are a digital advertising expert specializing in audience targeting for real estate.`;
+    const systemPrompt = `You are a digital advertising expert. Create detailed audience targeting strategies.`;
 
-    const prompt = `Create detailed targeting strategies for each audience segment:
+    const prompt = `Create targeting for: ${formData.targetAudience.join(', ')}
 
-Target Audiences: ${formData.targetAudience.join(', ')}
-Project Type: ${formData.projectType}
-Location: ${formData.city}
+Project: ${formData.projectType} in ${formData.city}
 
-For each audience provide:
-- Demographics (age, income, occupation)
-- Interests & Behaviors
-- Best platforms
-- Ad formats that work
-- Geographic targeting (specific areas/countries)
-- Messaging angle
+For each audience: demographics, interests, platforms, ad formats, geos, messaging angle.
 
 Format:
 Audience: [name]
@@ -266,46 +296,36 @@ Ad Formats: [list]
 Geos: [specific locations]
 ---`;
 
-    const result = await callGroqAPI(prompt, systemPrompt);
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
     return parseAITargeting(result);
   };
 
   const generateAILeadMagnet = async () => {
     const systemPrompt = `You are a conversion copywriter expert in real estate lead generation.`;
 
-    const prompt = `Create 4 compelling lead magnet landing page copies:
-
+    const prompt = `Create 4 lead magnet copies:
 1. ROI Calculator
 2. Brochure Download
-3. Virtual Tour Signup
+3. Virtual Tour
 4. Enquiry Form
 
 Project: ${formData.projectName}
 Type: ${formData.projectType}
 Target: ${formData.targetAudience.join(', ')}
-USPs: ${formData.usps}
-
-For each lead magnet:
-- Compelling headline
-- Benefit-rich subheading
-- Persuasive body copy (2-3 paragraphs)
-- Strong CTA button text
-- Form fields needed
 
 Format:
-Type: [lead magnet type]
+Type: [type]
 Headline: [headline]
 Subheading: [subheading]
-Body: [body copy]
+Body: [2-3 paragraphs]
 CTA: [button text]
 Fields: [field1, field2, field3]
 ---`;
 
-    const result = await callGroqAPI(prompt, systemPrompt);
+    const result = await callHuggingFaceAPI(prompt, systemPrompt);
     return parseAILeadMagnet(result);
   };
 
-  // Parsing functions
   const parseAIPosts = (text) => {
     const posts = [];
     const sections = text.split('---').filter(s => s.trim());
@@ -401,7 +421,7 @@ Fields: [field1, field2, field3]
         calendar.push({
           week: index + 1,
           theme: themeMatch[1].trim(),
-          content: contentMatch ? contentMatch[1].trim() : 'Strategic content planning',
+          content: contentMatch ? contentMatch[1].trim() : 'Strategic content',
           posts: posts.length > 0 ? posts : generateFallbackWeekPosts()
         });
       }
@@ -439,7 +459,7 @@ Fields: [field1, field2, field3]
 
   const parseAILeadMagnet = (text) => {
     const leadMagnets = {};
-    const types = ['ROI Calculator', 'Brochure', 'Virtual Tour', 'Enquiry'];
+    const types = ['calculator', 'brochure', 'virtualtour', 'enquiry'];
     const sections = text.split(/Type:|---/).filter(s => s.trim());
     
     sections.forEach((section, index) => {
@@ -450,11 +470,10 @@ Fields: [field1, field2, field3]
       const fieldsMatch = section.match(/Fields:\s*(.+)/i);
       
       if (headlineMatch && index < types.length) {
-        const key = types[index].toLowerCase().replace(/\s+/g, '');
-        leadMagnets[key] = {
+        leadMagnets[types[index]] = {
           headline: headlineMatch[1].trim(),
           subheading: subheadingMatch ? subheadingMatch[1].trim() : 'Get exclusive access',
-          body: bodyMatch ? bodyMatch[1].trim() : 'Discover the potential of this premium project.',
+          body: bodyMatch ? bodyMatch[1].trim() : 'Discover premium opportunities.',
           cta: ctaMatch ? ctaMatch[1].trim() : 'Get Started',
           formFields: fieldsMatch ? fieldsMatch[1].split(',').map(f => f.trim()) : ['Name', 'Email', 'Phone']
         };
@@ -464,138 +483,98 @@ Fields: [field1, field2, field3]
     return Object.keys(leadMagnets).length > 0 ? leadMagnets : generateFallbackLeadMagnet();
   };
 
-  // Fallback functions
-  const generateFallbackPosts = () => {
-    return [{
-      id: 1,
-      platform: 'Social Media',
-      copy: `🏢 ${formData.projectName || 'Premium Project'} - Your gateway to ${formData.projectType} excellence in ${formData.city}!\n\n✨ ${formData.usps || 'World-class amenities and strategic location'}\n\n📞 Enquire now!`,
-      cta: 'Learn More'
-    }];
-  };
+  const generateFallbackPosts = () => [{
+    id: 1,
+    platform: 'Social Media',
+    copy: `${formData.projectName} in ${formData.city}\n\n${formData.usps || 'Premium project'}\n\nEnquire now!`,
+    cta: 'Learn More'
+  }];
 
-  const generateFallbackAds = () => {
-    return [{
-      platform: 'Digital Ads',
-      headline: `${formData.projectName} - ${formData.city}`,
-      body: `Premium ${formData.projectType} project. ${formData.usps || 'Excellent location and amenities'}`,
-      cta: 'Enquire Now'
-    }];
-  };
+  const generateFallbackAds = () => [{
+    platform: 'Digital Ads',
+    headline: `${formData.projectName} - ${formData.city}`,
+    body: `Premium ${formData.projectType}. ${formData.usps || 'Excellent location'}`,
+    cta: 'Enquire Now'
+  }];
 
-  const generateFallbackPrompts = () => {
-    return [{
-      id: 1,
-      purpose: 'Hero Image',
-      prompt: `Photorealistic ${formData.projectType} project, modern architecture, ${formData.city} skyline, golden hour, professional photography`,
-      suggestedUse: 'Website banner, social media'
-    }];
-  };
+  const generateFallbackPrompts = () => [{
+    id: 1,
+    purpose: 'Hero Image',
+    prompt: `${formData.projectType} project, ${formData.city}, modern architecture, professional photography`,
+    suggestedUse: 'Website banner'
+  }];
 
-  const generateFallbackCalendar = () => {
-    return [{
-      week: 1,
-      theme: 'Project Launch',
-      content: 'Introduce the project and key features',
-      posts: generateFallbackWeekPosts()
-    }];
-  };
+  const generateFallbackCalendar = () => [{
+    week: 1,
+    theme: 'Project Launch',
+    content: 'Introduce key features',
+    posts: generateFallbackWeekPosts()
+  }];
 
-  const generateFallbackWeekPosts = () => {
-    return [
-      { day: 'Monday', format: 'Image Post', platform: 'Instagram/Facebook' },
-      { day: 'Wednesday', format: 'Video', platform: 'Instagram' },
-      { day: 'Friday', format: 'Article', platform: 'LinkedIn' },
-      { day: 'Sunday', format: 'Carousel', platform: 'All Platforms' }
-    ];
-  };
+  const generateFallbackWeekPosts = () => [
+    { day: 'Monday', format: 'Image Post', platform: 'Instagram' },
+    { day: 'Wednesday', format: 'Video', platform: 'Instagram' },
+    { day: 'Friday', format: 'Article', platform: 'LinkedIn' },
+    { day: 'Sunday', format: 'Carousel', platform: 'Facebook' }
+  ];
 
-  const generateFallbackTargeting = () => {
-    return formData.targetAudience.map(aud => ({
-      audience: aud,
-      demographics: 'Age 25-60, Middle to high income',
-      interests: 'Real estate, investments, property',
-      platforms: 'Facebook, Instagram, LinkedIn',
-      adFormats: 'All formats',
-      geos: formData.city || 'Target location'
-    }));
-  };
+  const generateFallbackTargeting = () => formData.targetAudience.map(aud => ({
+    audience: aud,
+    demographics: 'Age 25-60',
+    interests: 'Real estate, investments',
+    platforms: 'Facebook, Instagram',
+    adFormats: 'All formats',
+    geos: formData.city
+  }));
 
-  const generateFallbackLeadMagnet = () => {
-    return {
-      roicalculator: {
-        headline: `Calculate Your ${formData.projectName} Returns`,
-        subheading: 'See your investment potential',
-        body: 'Enter your details to calculate projected returns.',
-        cta: 'Calculate Now',
-        formFields: ['Name', 'Email', 'Phone', 'Investment Amount']
-      },
-      brochure: {
-        headline: `Download ${formData.projectName} Brochure`,
-        subheading: 'Complete project details',
-        body: 'Get the official brochure with all specifications.',
-        cta: 'Download Brochure',
-        formFields: ['Name', 'Email', 'Phone']
-      },
-      virtualtour: {
-        headline: `Virtual Tour of ${formData.projectName}`,
-        subheading: 'Experience from anywhere',
-        body: 'Book your exclusive virtual walkthrough.',
-        cta: 'Book Tour',
-        formFields: ['Name', 'Email', 'Phone', 'Preferred Date']
-      },
-      enquiry: {
-        headline: `Enquire About ${formData.projectName}`,
-        subheading: 'Get exclusive offers',
-        body: 'Connect with our team for special pre-launch deals.',
-        cta: 'Enquire Now',
-        formFields: ['Name', 'Email', 'Phone', 'Message']
-      }
-    };
-  };
-
-  const downloadContent = (format) => {
-    let content = '';
-    
-    if (format === 'txt') {
-      content = `Real Estate Marketing Content - ${formData.projectName || 'Project'}\n`;
-      content += `Generated with AI on ${new Date().toLocaleDateString()}\n\n`;
-      content += `=== SOCIAL MEDIA POSTS ===\n\n`;
-      generatedContent.socialPosts.forEach(post => {
-        content += `POST #${post.id} (${post.platform})\n${post.copy}\nCTA: ${post.cta}\n\n---\n\n`;
-      });
-      
-      content += `\n=== AD COPIES ===\n\n`;
-      generatedContent.adCopies.forEach(ad => {
-        content += `${ad.platform}\nHeadline: ${ad.headline}\nBody: ${ad.body}\nCTA: ${ad.cta}\n\n---\n\n`;
-      });
-      
-      content += `\n=== CREATIVE PROMPTS ===\n\n`;
-      generatedContent.creativePrompts.forEach(prompt => {
-        content += `${prompt.purpose}\nPrompt: ${prompt.prompt}\nUse: ${prompt.suggestedUse}\n\n---\n\n`;
-      });
-      
-      content += `\n=== CAMPAIGN CALENDAR ===\n\n`;
-      generatedContent.campaignCalendar.forEach(week => {
-        content += `Week ${week.week}: ${week.theme}\n${week.content}\n`;
-        week.posts.forEach(post => {
-          content += `${post.day}: ${post.format} (${post.platform})\n`;
-        });
-        content += `\n---\n\n`;
-      });
+  const generateFallbackLeadMagnet = () => ({
+    calculator: {
+      headline: `ROI Calculator`,
+      subheading: 'Calculate returns',
+      body: 'See your investment potential.',
+      cta: 'Calculate',
+      formFields: ['Name', 'Email', 'Phone']
+    },
+    brochure: {
+      headline: `Download Brochure`,
+      subheading: 'Complete details',
+      body: 'Get full project information.',
+      cta: 'Download',
+      formFields: ['Name', 'Email', 'Phone']
+    },
+    virtualtour: {
+      headline: `Virtual Tour`,
+      subheading: 'Experience remotely',
+      body: 'Book your virtual walkthrough.',
+      cta: 'Book Tour',
+      formFields: ['Name', 'Email', 'Phone']
+    },
+    enquiry: {
+      headline: `Enquire Now`,
+      subheading: 'Get exclusive offers',
+      body: 'Connect with our team.',
+      cta: 'Enquire',
+      formFields: ['Name', 'Email', 'Phone', 'Message']
     }
+  });
+
+  const downloadContent = () => {
+    let content = `Real Estate Marketing Content - ${formData.projectName}\nGenerated: ${new Date().toLocaleDateString()}\n\n`;
+    content += `=== SOCIAL MEDIA POSTS ===\n\n`;
+    generatedContent.socialPosts.forEach(post => {
+      content += `${post.platform}\n${post.copy}\nCTA: ${post.cta}\n\n---\n\n`;
+    });
     
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${formData.projectName || 'project'}-ai-marketing-content.txt`;
+    a.download = `${formData.projectName}-marketing.txt`;
     a.click();
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-      {/* Header */}
       <header className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -606,12 +585,12 @@ Fields: [field1, field2, field3]
                   Real Estate Marketing Automation
                   <Sparkles className="w-5 h-5 text-yellow-400" />
                 </h1>
-                <p className="text-xs text-slate-400">AI-Powered Creative Content Generation</p>
+                <p className="text-xs text-slate-400">AI-Powered Content Generation</p>
               </div>
             </div>
             {generatedContent && (
               <button
-                onClick={() => downloadContent('txt')}
+                onClick={downloadContent}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition"
               >
                 <Download className="w-4 h-4" />
@@ -622,7 +601,6 @@ Fields: [field1, field2, field3]
         </div>
       </header>
 
-      {/* Tab Navigation */}
       <div className="bg-slate-800/30 border-b border-slate-700">
         <div className="container mx-auto px-4">
           <div className="flex gap-1">
@@ -653,41 +631,52 @@ Fields: [field1, field2, field3]
         </div>
       </div>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'input' && (
           <div className="max-w-4xl mx-auto">
-            {/* API Key Section */}
             <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 backdrop-blur-sm rounded-xl border border-blue-700/50 p-6 mb-6">
               <div className="flex items-start gap-3">
                 <Sparkles className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold mb-2">AI-Powered Generation</h3>
+                  <h3 className="text-lg font-bold mb-2">Hugging Face AI Integration</h3>
                   <p className="text-sm text-slate-300 mb-4">
-                    Enter your Groq API key to unlock creative, unique, and researched content generation.
-                    Your API key is stored only in your browser and never sent to our servers.
+                    Enter your Hugging Face API token for creative AI-generated content. Get your free token at huggingface.co/settings/tokens
                   </p>
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 mb-3">
                     <input
                       type="password"
                       value={formData.apiKey}
                       onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                      placeholder="Enter your Groq API key (gsk_...)"
+                      placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxx"
                       className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 text-sm"
                     />
+                    <button
+                      onClick={testApiKey}
+                      disabled={!formData.apiKey || isGenerating}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                    >
+                      {isGenerating ? 'Testing...' : 'Test API Key'}
+                    </button>
                     <a
-                      href="https://console.groq.com"
+                      href="https://huggingface.co/settings/tokens"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition whitespace-nowrap"
                     >
-                      Get API Key
+                      Get Token
                     </a>
                   </div>
-                  {!formData.apiKey && (
-                    <p className="text-xs text-yellow-400 mt-2">
-                      ⚠️ Without an API key, the tool will use basic templates
-                    </p>
+                  {apiKeyValid === true && (
+                    <div className="flex items-center gap-2 text-green-400 text-sm">
+                      <CheckCircle className="w-4 h-4" />
+                      API token is valid and working!
+                    </div>
+                  )}
+                  {apiKeyValid === false && (
+                    <div className="flex items-center gap-2 text-red-400 text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      API token validation failed
+                    </div>
                   )}
                 </div>
               </div>
@@ -696,7 +685,10 @@ Fields: [field1, field2, field3]
             {error && (
               <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-200">{error}</p>
+                <div>
+                  <p className="text-sm text-red-200">{error}</p>
+                  <p className="text-xs text-red-300 mt-1">Need help? Check huggingface.co/settings/tokens for API status</p>
+                </div>
               </div>
             )}
 
@@ -706,9 +698,8 @@ Fields: [field1, field2, field3]
                 Project Details
               </h2>
 
-              {/* Project Type */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-3">Project Type *</label>
+                <label className="block text-sm font-medium mb-3">Project Type</label>
                 <div className="grid grid-cols-3 gap-4">
                   {projectTypes.map(type => {
                     const Icon = type.icon;
@@ -730,10 +721,9 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* Basic Info */}
               <div className="grid md:grid-cols-2 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Project Name *</label>
+                  <label className="block text-sm font-medium mb-2">Project Name</label>
                   <input
                     type="text"
                     value={formData.projectName}
@@ -754,10 +744,9 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* Location */}
               <div className="grid md:grid-cols-3 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">City *</label>
+                  <label className="block text-sm font-medium mb-2">City</label>
                   <input
                     type="text"
                     value={formData.city}
@@ -788,9 +777,8 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* Target Audience */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-3">Target Audience *</label>
+                <label className="block text-sm font-medium mb-3">Target Audience</label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {audienceOptions.map(option => (
                     <button
@@ -808,7 +796,6 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* USPs */}
               <div className="mb-6">
                 <label className="block text-sm font-medium mb-2">Key USPs & Features</label>
                 <textarea
@@ -820,7 +807,6 @@ Fields: [field1, field2, field3]
                 />
               </div>
 
-              {/* Marketing Goals */}
               <div className="mb-6">
                 <label className="block text-sm font-medium mb-3">Marketing Goals</label>
                 <div className="grid grid-cols-2 gap-3">
@@ -840,7 +826,6 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* Content Needs */}
               <div className="mb-8">
                 <label className="block text-sm font-medium mb-3">Content Needs</label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -860,7 +845,6 @@ Fields: [field1, field2, field3]
                 </div>
               </div>
 
-              {/* Generate Button */}
               <button
                 onClick={generateWithAI}
                 disabled={!formData.projectName || !formData.city || formData.targetAudience.length === 0 || isGenerating}
@@ -874,14 +858,14 @@ Fields: [field1, field2, field3]
                 ) : (
                   <>
                     <Sparkles className="w-5 h-5" />
-                    Generate AI-Powered Content
+                    Generate AI Content
                   </>
                 )}
               </button>
               
               {isGenerating && (
                 <p className="text-center text-sm text-slate-400 mt-3">
-                  AI is researching {formData.city} market and creating unique content... This may take 30-60 seconds.
+                  AI is researching and creating unique content... This takes 60-120 seconds.
                 </p>
               )}
             </div>
@@ -890,7 +874,6 @@ Fields: [field1, field2, field3]
 
         {activeTab === 'results' && generatedContent && (
           <div className="space-y-6">
-            {/* Social Media Posts */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Target className="w-6 h-6 text-blue-400" />
@@ -910,7 +893,6 @@ Fields: [field1, field2, field3]
               </div>
             </div>
 
-            {/* Ad Copies */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <TrendingUp className="w-6 h-6 text-green-400" />
@@ -928,7 +910,6 @@ Fields: [field1, field2, field3]
               </div>
             </div>
 
-            {/* Creative Prompts */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Lightbulb className="w-6 h-6 text-yellow-400" />
@@ -948,7 +929,6 @@ Fields: [field1, field2, field3]
               </div>
             </div>
 
-            {/* Campaign Calendar */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Calendar className="w-6 h-6 text-purple-400" />
@@ -971,7 +951,6 @@ Fields: [field1, field2, field3]
               </div>
             </div>
 
-            {/* Targeting Suggestions */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <Target className="w-6 h-6 text-red-400" />
@@ -1008,7 +987,6 @@ Fields: [field1, field2, field3]
               </div>
             </div>
 
-            {/* Lead Magnet Copy */}
             <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 p-6">
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                 <FileText className="w-6 h-6 text-cyan-400" />
@@ -1024,11 +1002,6 @@ Fields: [field1, field2, field3]
                       <button className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-xs font-semibold transition">
                         {magnet.cta}
                       </button>
-                      {magnet.whatsappCta && (
-                        <button className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-xs font-semibold transition">
-                          {magnet.whatsappCta}
-                        </button>
-                      )}
                     </div>
                     <div className="text-xs text-slate-400">
                       Form Fields: {magnet.formFields.join(', ')}
@@ -1041,10 +1014,9 @@ Fields: [field1, field2, field3]
         )}
       </main>
 
-      {/* Footer */}
       <footer className="bg-slate-800/50 border-t border-slate-700 mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-slate-400 text-sm">
-          <p>Real Estate Marketing Automation Tool • AI-Powered Creative Content Generation</p>
+          <p>Real Estate Marketing Automation Tool • AI-Powered by Hugging Face</p>
           <p className="mt-1 text-xs">Built for HNI, UHNI, NRI & Corporate Investors</p>
         </div>
       </footer>
